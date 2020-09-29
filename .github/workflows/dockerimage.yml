@@ -1,0 +1,24 @@
+name: Docker Image CI
+
+on: [pull_request]
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: Build the Docker image
+      run: docker build -t jsh .
+    - name: Run JUnit tests
+      run: docker run jsh /jsh/test
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1.0.0
+      with:
+        # Artifact name
+        name: test-report
+        # Directory containing files to upload
+        path: /jsh/target/site/
+

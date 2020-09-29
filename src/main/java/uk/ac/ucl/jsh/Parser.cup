@@ -1,0 +1,136 @@
+import java_cup.runtime.*;
+import java.util.ArrayList;
+
+/* Preliminaries to set up and use the scanner.  */
+parser code {: 
+
+  private Lexer lexer;
+  private ArrayList<String> args;
+  private AppFactory factory;
+  public Boolean syntaxErrors;
+
+  public Parser(Lexer lex) {
+    super(lex);
+    lexer = lex;
+    syntaxErrors = false;
+    args = new ArrayList<String>();
+    factory = AppFactory.getInstance();
+  }
+
+  /* Add method syntax_error so it will display the line 
+     and column of where the error occurred in the input */ 
+
+  public void syntax_error(Symbol current_token) {
+    syntaxErrors = true;
+    report_error("Syntax error at line " + (current_token.left+1) + ", column " + current_token.right + ". ", null);
+  }
+
+  public void syscall() {
+    factory.getApp(args.remove(0)).exec(args, Environment.getOutput());
+  }
+
+  public void tryToExpand(String unquoted) {
+    if (unquoted.indexOf('*') == -1) {
+        args.add(unquoted);
+    } else {
+        ArrayList<String> paths = Globber.glob(unquoted);
+        if (paths.isEmpty()) {
+            args.add(unquoted);
+        } else {
+            args.addAll(paths);
+        }
+    }
+  }
+
+  public void resetArgs() {
+    args = new ArrayList<String>();
+  }
+
+:};
+
+/* Use the scanner created with JFlex  */ 
+scan with {: return lexer.next_token(); :};
+
+
+/* Terminals (tokens returned by the scanner). */
+terminal            DOUBLEQUOTE, SINGLEQUOTE, BACKQUOTE, GREATER, LESS, SEMI, PIPE, WHITESPACE;
+terminal String     UNQUOTED, NON_NEWLINE_NON_SINGLE_QUOTE, DOUBLEQUOTECONTENT;
+
+/* Non terminals */
+non terminal            command, pipe, seq, call, quoted, singlequoted, backquoted, doublequoted,
+                        atom, argument, redirection, optional_whitespace, backquoted_or_double_quote_content_kleene,
+                        whitespace_atom_kleene, redirection_whitespace_kleene;
+
+/* Precedences */
+precedence nonassoc SEMI;
+precedence left PIPE;
+precedence left GREATER, LESS;
+precedence nonassoc BACKQUOTE;
+
+/* The grammar */
+command ::= pipe
+        |   seq
+        |   call
+        ;
+
+pipe ::= call PIPE call
+        | pipe PIPE call
+        ;
+
+seq ::= command SEMI
+        {: resetArgs(); :}
+        command
+        ;
+
+call ::= optional_whitespace redirection_whitespace_kleene argument whitespace_atom_kleene optional_whitespace
+        {: syscall(); :}
+        ;
+
+redirection_whitespace_kleene ::= redirection_whitespace_kleene redirection WHITESPACE
+                                |
+                                ;
+
+whitespace_atom_kleene ::= whitespace_atom_kleene WHITESPACE atom
+                         |
+                         ;
+
+atom ::= redirection
+        | argument
+        ;
+
+argument ::= quoted
+           | UNQUOTED:s
+           {: tryToExpand(s); :}
+           ;
+
+redirection ::= LESS optional_whitespace argument
+             | GREATER optional_whitespace argument
+             ;
+
+optional_whitespace ::= WHITESPACE
+                      |
+                      ;
+
+quoted ::= singlequoted
+        | doublequoted
+        | backquoted
+        ;
+
+singlequoted ::= SINGLEQUOTE NON_NEWLINE_NON_SINGLE_QUOTE:s SINGLEQUOTE
+                 {: args.add(s); :}
+                 ;
+
+backquoted ::= BACKQUOTE call BACKQUOTE;
+
+doublequoted ::= DOUBLEQUOTE backquoted_or_double_quote_content_kleene DOUBLEQUOTE;
+
+backquoted_or_double_quote_content_kleene ::= backquoted_or_double_quote_content_kleene backquoted
+                                            | backquoted_or_double_quote_content_kleene DOUBLEQUOTECONTENT:s
+                                            {: args.add(s); :}
+                                            |
+                                            ;
+
+
+
+
+
